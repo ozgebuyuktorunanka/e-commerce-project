@@ -143,11 +143,11 @@ Included for development and testing purposes:
  - curl http://localhost:3000/users?page=1&limit=10&sort=id&order=asc
 
  ### ➕ Create a New User
-    ```bash
+  ```
     curl -X POST http://localhost:3000/users \
     -H "Content-Type: application/json" \
     -d '{"firstName":"aLi", "lastName":"YILMAZ", "email":"ali@example.com", "password":"123456", "role":"user"}'
-    ```
+   ```
 
 ### 📦 List Products (Sorted by Price Descending)
 - curl http://localhost:3000/products?page=1&limit=10&sort=price&order=desc
