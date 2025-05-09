@@ -266,9 +266,3 @@ graph TB
 
 ### Description:
 This diagram provides an overview of the API endpoints available in the application, categorized by functionality. Each endpoint is clearly defined, indicating the HTTP methods and paths.
-
----
-
-### Final Notes
-- Ensure that the diagrams are updated to reflect any changes in your system architecture or workflows.
-- Consider adding additional sections for future enhancements, deployment strategies, or specific technologies used in your stack.
