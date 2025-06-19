@@ -1,0 +1,508 @@
+version: '3.8'
+
+# YAML ANCHORS --> enables the identification and reuse of repetitive structures.
+x-common-variables: &common-variables
+  NODE_ENV: ${NODE_ENV:-production}
+
+x-logging: &default-logging
+  driver: 'json-file'
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+x-microservice-resources: &microservice-resources
+  resources:
+    limits:
+      cpus: '0.5'
+      memory: 512M
+    reservations:
+      memory: 256M
+
+x-microservice-healthcheck: &microservice-healthcheck
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+# -------------------------------------------------------
+services:
+  # Infrastructure Services
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - '2181:2181' 
+    container_name: zookeeper
+    hostname: zookeeper
+    logging: *default-logging
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - '9092:9092'
+      - '9093:9093'
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    logging: *default-logging
+    depends_on:
+      - zookeeper
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    logging: *default-logging
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  shipping-postgres:
+    image: postgres:16-alpine
+    container_name: shipping_postgres
+    environment:
+      POSTGRES_USER: ${SHIPPING_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${SHIPPING_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${SHIPPING_POSTGRES_DB}
+    ports:
+      - '5435:5432'
+    volumes:
+      - shipping-pg-data:/var/lib/postgresql/data
+    logging: *default-logging
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${SHIPPING_POSTGRES_USER} -d ${SHIPPING_POSTGRES_DB}',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - '27017:27017'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+    volumes:
+      - mongodb_data:/data/db
+    logging: *default-logging
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - '6379:6379'
+    logging: *default-logging
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: ecommerce-elasticsearch
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=ecommerce-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - 'ES_JAVA_OPTS=-Xms512m -Xmx512m'
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - '9200:9200'
+      - '9300:9300'
+    logging: *default-logging
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        ['CMD-SHELL', 'curl -f http://localhost:9200/_cluster/health || exit 1']
+
+  # Management Tools
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - '${PGADMIN_PORT:-5050}:80'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    logging: *default-logging
+    depends_on:
+      - postgres
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+
+  # Core Microservices
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
+    container_name: api_gateway
+    ports:
+      - '${API_GATEWAY_PORT}:${API_GATEWAY_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${API_GATEWAY_PORT}
+      API_GATEWAY_URL: ${API_GATEWAY_URL}
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL}
+      CART_SERVICE_URL: ${CART_SERVICE_URL}
+      PRODUCT_SERVICE_URL: ${PRODUCT_SERVICE_URL}
+      STOCK_SERVICE_URL: ${STOCK_SERVICE_URL}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL}
+      SHIPPING_SERVICE_URL: ${SHIPPING_SERVICE_URL}
+    volumes:
+      - ./api-gateway:/usr/src/api-gateway
+      - /usr/src/api-gateway/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${API_GATEWAY_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      - users-microservice
+      - auth-microservice
+      - orders-microservice
+      - cart-microservice
+      - products-microservice
+      - stock-microservice
+      - notifications-microservice
+      - shipping-microservice
+
+  users-microservice:
+    build:
+      context: .
+      dockerfile: ./users-microservice/Dockerfile
+    container_name: users_service
+    ports:
+      - '${USER_SERVICE_PORT}:${USER_SERVICE_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${USER_SERVICE_PORT}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}
+    volumes:
+      - ./users-microservice:/usr/src/users-microservice
+      - /usr/src/users-microservice/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${USER_SERVICE_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  auth-microservice:
+    build:
+      context: .
+      dockerfile: ./auth-microservice/Dockerfile
+    container_name: auth_service
+    ports:
+      - '${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${AUTH_SERVICE_PORT}
+      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - ./auth-microservice:/usr/src/auth-microservice
+      - /usr/src/auth-microservice/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${AUTH_SERVICE_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  orders-microservice:
+    build:
+      context: .
+      dockerfile: ./orders-microservice/Dockerfile
+    container_name: orders_service
+    ports:
+      - '${ORDER_SERVICE_PORT}:${ORDER_SERVICE_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${ORDER_SERVICE_PORT}
+      MONGO_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DB}?authSource=admin
+    volumes:
+      - ./orders-microservice:/usr/src/orders-microservice
+      - /usr/src/orders-microservice/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${ORDER_SERVICE_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  cart-microservice:
+    build:
+      context: .
+      dockerfile: ./cart-microservice/Dockerfile
+    container_name: cart_service
+    ports:
+      - '${CART_SERVICE_PORT}:${CART_SERVICE_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${CART_SERVICE_PORT}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - ./cart-microservice:/usr/src/cart-microservice
+      - /usr/src/cart-microservice/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${CART_SERVICE_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  products-microservice:
+    build:
+      context: .
+      dockerfile: ./products-microservice/Dockerfile
+    container_name: products_service
+    ports:
+      - '${PRODUCT_SERVICE_PORT}:${PRODUCT_SERVICE_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${PRODUCT_SERVICE_PORT}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - ./products-microservice:/usr/src/products-microservice
+      - /usr/src/products-microservice/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${PRODUCT_SERVICE_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  shipping-microservice:
+    build:
+      context: .
+      dockerfile: ./shipping-microservice/Dockerfile
+    container_name: shipping_service
+    ports:
+      - '${SHIPPING_SERVICE_PORT}:${SHIPPING_SERVICE_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${SHIPPING_SERVICE_PORT}
+      DATABASE_URL: postgresql://${SHIPPING_POSTGRES_USER}:${SHIPPING_POSTGRES_PASSWORD}@shipping-postgres:5432/${SHIPPING_POSTGRES_DB}
+    volumes:
+      - ./shipping-microservice:/usr/src/shipping-microservice
+      - /usr/src/shipping-microservice/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${SHIPPING_SERVICE_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      shipping-postgres:
+        condition: service_healthy
+
+  stock-microservice:
+    build:
+      context: .
+      dockerfile: ./stock-microservice/Dockerfile
+    container_name: stock_service
+    ports:
+      - '${STOCK_SERVICE_PORT}:${STOCK_SERVICE_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${STOCK_SERVICE_PORT}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KAFKA_BROKER_URL: ${KAFKA_BROKER_URL:-kafka:9092}
+    volumes:
+      - ./stock-microservice:/usr/src/stock-microservice
+      - /usr/src/stock-microservice/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${STOCK_SERVICE_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      products-microservice:
+        condition: service_healthy
+
+  notifications-microservice:
+    build:
+      context: .
+      dockerfile: ./notifications-microservice/Dockerfile
+    container_name: notifications_service
+    ports:
+      - '${NOTIFICATION_SERVICE_PORT}:${NOTIFICATION_SERVICE_PORT}'
+    environment:
+      <<: *common-variables
+      PORT: ${NOTIFICATION_SERVICE_PORT}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KAFKA_BROKER_URL: ${KAFKA_BROKER_URL:-kafka:9092}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+    volumes:
+      - ./notifications-microservice:/usr/src/notifications-microservice
+      - /usr/src/notifications-microservice/node_modules
+    logging: *default-logging
+    deploy: *microservice-resources
+    healthcheck:
+      <<: *microservice-healthcheck
+      test:
+        [
+          'CMD-SHELL',
+          'curl -f http://localhost:${NOTIFICATION_SERVICE_PORT}/health || exit 1',
+        ]
+    networks:
+      - ecommerce-ms
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+networks:
+  ecommerce-ms:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  mongodb_data:
+  shipping-pg-data:
+  elasticsearch-data:

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps",
+  "monorepo": true,
+  "root": "apps/api-gateway",
+  "compilerOptions": {
+    "webpack": true,
+    "tsConfigPath": "apps/api-gateway/tsconfig.app.json"
+  },
+  "projects": {
+    "api-gateway": {
+      "type": "application",
+      "root": "api-gateway",
+      "entryFile": "main",
+      "sourceRoot": "api-gateway/src",
+      "compilerOptions": {
+        "tsConfigPath": "api-gateway/tsconfig.app.json"
+      }
+    },
+    "auth-microservice": {
+      "type": "application",
+      "root": "auth-microservice",
+      "entryFile": "main",
+      "sourceRoot": "auth-microservice/src",
+      "compilerOptions": {
+        "tsConfigPath": "auth-microservice/tsconfig.app.json"
+      }
+    },
+    "cart-microservice": {
+      "type": "application",
+      "root": "cart-microservice",
+      "entryFile": "main",
+      "sourceRoot": "cart-microservice/src",
+      "compilerOptions": {
+        "tsConfigPath": "cart-microservice/tsconfig.app.json"
+      }
+    },
+    "products-microservice": {
+      "type": "application",
+      "root": "products-microservice",
+      "entryFile": "main",
+      "sourceRoot": "products-microservice/src",
+      "compilerOptions": {
+        "tsConfigPath": "products-microservice/tsconfig.app.json"
+      }
+    },
+    "orders-microservice": {
+      "type": "application",
+      "root": "orders-microservice",
+      "entryFile": "main",
+      "sourceRoot": "orders-microservice/src",
+      "compilerOptions": {
+        "tsConfigPath": "orders-microservice/tsconfig.app.json"
+      }
+    },
+    "users-microservice": {
+      "type": "application",
+      "root": "users-microservice",
+      "entryFile": "main",
+      "sourceRoot": "users-microservice/src",
+      "compilerOptions": {
+        "tsConfigPath": "users-microservice/tsconfig.app.json"
+      }
+    },
+    "notifications-microservice": {
+      "type": "application",
+      "root": "notifications-microservice",
+      "entryFile": "main",
+      "sourceRoot": "notifications-microservice/src",
+      "compilerOptions": {
+        "tsConfigPath": "notifications-microservice/tsconfig.app.json"
+      }
+    },
+    "shipping-microservice": {
+      "type": "application",
+      "root": "shipping-microservice",
+      "entryFile": "main",
+      "sourceRoot": "shipping-microservice/src",
+      "compilerOptions": {
+        "tsConfigPath": "shipping-microservice/tsconfig.app.json"
+      }
+    },
+    "shared": {
+      "type": "library",
+      "root": "libs/shared",
+      "entryFile": "index",
+      "sourceRoot": "libs/shared/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/shared/tsconfig.lib.json"
+      }
+    }
+  }
+}

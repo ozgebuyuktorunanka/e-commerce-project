@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+npm-debug.log
+dist
+tsconfig.tsbuildinfo
+.git
+.cache
+coverage
+.gitignore
+.README.md
+.nyc_output
+.gitignore
+.vscode
+.DS_Store
+**/dist
+**/build
+**/coverage

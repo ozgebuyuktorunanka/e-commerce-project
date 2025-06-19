@@ -1,0 +1,15 @@
+<p>Dear Customer,</p>
+<p>Your order has been created successfully.</p>
+
+<h3>Order #{{orderId}}</h3>
+<p><strong>Total Price:</strong> {{totalPrice}} TL</p>
+<p><strong>Date:</strong> {{date}}</p>
+
+<h3>Items:</h3>
+<ul>
+  {{#each items}}
+    <li>Product ID: {{this.productId}}, Quantity: {{this.quantity}}</li>
+  {{/each}}
+</ul>
+
+<p>Thank you for shopping with us.</p>

@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "module": "CommonJS",
+    "target": "ES2021",
+    "lib": ["ES2021", "DOM"],
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "",
+    "strict": true,
+    "noImplicitAny": true,
+    "experimentalDecorators": true,
+    "esModuleInterop":true,
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "*": ["node_modules/*"]
+    }
+  },
+  "include": ["apps/**/*", "libs/**/*", "test/**/*", "api-gateway", "auth-microservice", "cart-microservice","notifications-microservice","orders-microservice","products-microservice","shipping-microservice","stock-microservice"
+  ,"users-microservice", "common"],
+  "exclude": [
+    "node_modules",
+    "**/node_modules",
+    "dist"
+  ]
+}
